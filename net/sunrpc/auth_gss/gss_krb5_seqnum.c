@@ -43,13 +43,12 @@ static s32
 krb5_make_rc4_seq_num(struct krb5_ctx *kctx, int direction, s32 seqnum,
 		      unsigned char *cksum, unsigned char *buf)
 {
-	struct crypto_skcipher *cipher;
-	unsigned char *plain;
+	struct crypto_sync_skcipher *cipher;
+	unsigned char plain[8];
 	s32 code;
 
 	dprintk("RPC:       %s:\n", __func__);
-	cipher = crypto_alloc_skcipher(kctx->gk5e->encrypt_name, 0,
-				       CRYPTO_ALG_ASYNC);
+	cipher = crypto_alloc_sync_skcipher(kctx->gk5e->encrypt_name, 0, 0);
 	if (IS_ERR(cipher))
 		return PTR_ERR(cipher);
 
@@ -72,13 +71,12 @@ krb5_make_rc4_seq_num(struct krb5_ctx *kctx, int direction, s32 seqnum,
 
 	code = krb5_encrypt(cipher, cksum, plain, buf, 8);
 out:
-	crypto_free_skcipher(cipher);
-	kfree(plain);
+	crypto_free_sync_skcipher(cipher);
 	return code;
 }
 s32
 krb5_make_seq_num(struct krb5_ctx *kctx,
-		struct crypto_skcipher *key,
+		struct crypto_sync_skcipher *key,
 		int direction,
 		u32 seqnum,
 		unsigned char *cksum, unsigned char *buf)
@@ -113,13 +111,12 @@ static s32
 krb5_get_rc4_seq_num(struct krb5_ctx *kctx, unsigned char *cksum,
 		     unsigned char *buf, int *direction, s32 *seqnum)
 {
-	struct crypto_skcipher *cipher;
-	unsigned char *plain;
+	unsigned char plain[8];
+	struct crypto_sync_skcipher *cipher;
 	s32 code;
 
 	dprintk("RPC:       %s:\n", __func__);
-	cipher = crypto_alloc_skcipher(kctx->gk5e->encrypt_name, 0,
-				       CRYPTO_ALG_ASYNC);
+	cipher = crypto_alloc_sync_skcipher(kctx->gk5e->encrypt_name, 0, 0);
 	if (IS_ERR(cipher))
 		return PTR_ERR(cipher);
 
@@ -150,7 +147,7 @@ krb5_get_rc4_seq_num(struct krb5_ctx *kctx, unsigned char *cksum,
 out_plain:
 	kfree(plain);
 out:
-	crypto_free_skcipher(cipher);
+	crypto_free_sync_skcipher(cipher);
 	return code;
 }
 
@@ -161,8 +158,8 @@ krb5_get_seq_num(struct krb5_ctx *kctx,
 	       int *direction, u32 *seqnum)
 {
 	s32 code;
-	struct crypto_skcipher *key = kctx->seq;
-	unsigned char *plain;
+	unsigned char plain[8];
+	struct crypto_sync_skcipher *key = kctx->seq;
 
 	dprintk("RPC:       krb5_get_seq_num:\n");
 
