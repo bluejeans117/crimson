@@ -2092,8 +2092,8 @@ long _do_fork(unsigned long clone_flags,
 	int trace = 0;
 	long nr;
 
-	/* Boost CPU to the max for 1250 ms when userspace launches an app */
-	if (is_zygote_pid(current->pid))
+	/* Boost CPU to the max for 50 ms when userspace launches an app */
+	if (task_is_zygote(current))
 		cpu_input_boost_kick_max(1250);
 
 	/*
