@@ -137,6 +137,11 @@ struct cpuset {
 	int relax_domain_level;
 };
 
+struct cs_target {
+	const char *name;
+	char *cpus;
+};
+
 static inline struct cpuset *css_cs(struct cgroup_subsys_state *css)
 {
 	return css ? container_of(css, struct cpuset, css) : NULL;
