@@ -729,9 +729,9 @@ static void write_default_values(struct cgroup_subsys_state *css)
 	static struct st_data st_targets[] = {
 		{ "audio-app",	0, 0 },
 		{ "background",	-25, 0 },
-		{ "foreground",	2, 1 },
+		{ "foreground",	0, 1 },
 		{ "rt",		0, 0 },
-		{ "top-app",	10, 1 },
+		{ "top-app",	5, 1 },
 	};
 	int i;
 
@@ -765,9 +765,12 @@ schedtune_css_alloc(struct cgroup_subsys_state *parent_css)
 	}
 
 	/* Allow only a limited number of boosting groups */
-	for (idx = 1; idx < BOOSTGROUPS_COUNT; ++idx)
+	for (idx = 1; idx < BOOSTGROUPS_COUNT; ++idx) {
 		if (!allocated_group[idx])
 			break;
+		write_default_values(&allocated_group[idx]->css);
+	}
+
 	if (idx == BOOSTGROUPS_COUNT) {
 		pr_err("Trying to create more than %d SchedTune boosting groups\n",
 		       BOOSTGROUPS_COUNT);

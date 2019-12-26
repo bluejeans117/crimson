@@ -110,15 +110,12 @@ enum print_reason {
 #define TYPEC_DEFAULT_CURRENT_UA	900000
 #define TYPEC_MEDIUM_CURRENT_UA		1500000
 #define TYPEC_HIGH_CURRENT_UA		3000000
-<<<<<<< HEAD
 #define NONSTANDARD_CURRENT_UA		1000000
 #define HVDCP2_CURRENT_UA		1500000
 #define QC2_UNSUPPORTED_UA		2000000
-=======
 #define DCIN_ICL_MIN_UA			100000
 #define DCIN_ICL_MAX_UA			1500000
 #define DCIN_ICL_STEP_UA		100000
->>>>>>> aefdda00c730adbd8b75f1324c29d3362900edf9
 
 #define ROLE_REVERSAL_DELAY_MS		2000
 
@@ -402,6 +399,7 @@ struct smb_charger {
 	int			otg_delay_ms;
 	int			*weak_chg_icl_ua;
 	bool			pd_not_supported;
+
 
 	/* locks */
 	struct mutex		smb_lock;

@@ -51,6 +51,8 @@ static bool off_charge_flag;
 
 static void update_sw_icl_max(struct smb_charger *chg, int pst);
 
+static bool is_cp_available(struct smb_charger *chg);
+
 int smblib_read(struct smb_charger *chg, u16 addr, u8 *val)
 {
 	unsigned int value;
@@ -764,7 +766,7 @@ static int smblib_usb_pd_adapter_allowance_override(struct smb_charger *chg,
 {
 	int rc = 0;
 
-	if (chg->smb_version == PMI632_SUBTYPE)
+	if (chg->chg_param.smb_version == PMI632_SUBTYPE)
 		return 0;
 
 	rc = smblib_write(chg, USBIN_ADAPTER_ALLOW_OVERRIDE_REG,
@@ -811,7 +813,7 @@ static int smblib_set_usb_pd_allowed_voltage(struct smb_charger *chg,
 	int rc, aicl_threshold;
 	u8 vbus_allowance;
 
-	if (chg->smb_version == PMI632_SUBTYPE)
+	if (chg->chg_param.smb_version == PMI632_SUBTYPE)
 		return 0;
 
 	if (chg->pd_active == POWER_SUPPLY_PD_PPS_ACTIVE) {
@@ -1491,7 +1493,7 @@ static int smblib_set_moisture_protection(struct smb_charger *chg,
 
 		/* Set 1% duty cycle on ID detection */
 		rc = smblib_masked_write(chg,
-				((chg->smb_version == PMI632_SUBTYPE) ?
+				((chg->chg_param.smb_version == PMI632_SUBTYPE) ?
 				PMI632_TYPEC_U_USB_WATER_PROTECTION_CFG_REG :
 				TYPEC_U_USB_WATER_PROTECTION_CFG_REG),
 				EN_MICRO_USB_WATER_PROTECTION_BIT |
@@ -1524,7 +1526,7 @@ static int smblib_set_moisture_protection(struct smb_charger *chg,
 		}
 
 		/* Disable periodic monitoring of CC_ID pin */
-		rc = smblib_write(chg, ((chg->smb_version == PMI632_SUBTYPE) ?
+		rc = smblib_write(chg, ((chg->chg_param.smb_version == PMI632_SUBTYPE) ?
 				PMI632_TYPEC_U_USB_WATER_PROTECTION_CFG_REG :
 				TYPEC_U_USB_WATER_PROTECTION_CFG_REG), 0);
 		if (rc < 0) {
@@ -1573,7 +1575,7 @@ static int smblib_dc_suspend_vote_callback(struct votable *votable, void *data,
 {
 	struct smb_charger *chg = data;
 
-	if (chg->smb_version == PMI632_SUBTYPE)
+	if (chg->chg_param.smb_version == PMI632_SUBTYPE)
 		return 0;
 
 	/* resume input if suspend is invalid */
@@ -2178,7 +2180,7 @@ int smblib_get_prop_batt_iterm(struct smb_charger *chg,
 	temp = buf[1] | (buf[0] << 8);
 	temp = sign_extend32(temp, 15);
 
-	if (chg->smb_version == PMI632_SUBTYPE)
+	if (chg->chg_param.smb_version == PMI632_SUBTYPE)
 		temp = DIV_ROUND_CLOSEST(temp * ITERM_LIMITS_PMI632_MA,
 					ADC_CHG_ITERM_MASK);
 	else
@@ -2913,7 +2915,7 @@ int smblib_get_prop_dc_present(struct smb_charger *chg,
 	int rc;
 	u8 stat;
 
-	if (chg->smb_version == PMI632_SUBTYPE) {
+	if (chg->chg_param.smb_version == PMI632_SUBTYPE) {
 		val->intval = 0;
 		return 0;
 	}
@@ -2934,7 +2936,7 @@ int smblib_get_prop_dc_online(struct smb_charger *chg,
 	int rc = 0;
 	u8 stat;
 
-	if (chg->smb_version == PMI632_SUBTYPE) {
+	if (chg->chg_param.smb_version == PMI632_SUBTYPE) {
 		val->intval = 0;
 		return 0;
 	}
@@ -3185,7 +3187,7 @@ int smblib_get_prop_usb_voltage_max(struct smb_charger *chg,
 		}
 		/* else, fallthrough */
 	case POWER_SUPPLY_TYPE_USB_HVDCP_3:
-		if (chg->smb_version == PMI632_SUBTYPE)
+		if (chg->chg_param.smb_version == PMI632_SUBTYPE)
 			val->intval = MICRO_9V;
 		else
 			val->intval = MICRO_12V;
@@ -3283,7 +3285,7 @@ int smblib_get_prop_usb_voltage_now(struct smb_charger *chg,
 	 * to occur randomly in the USBIN channel, particularly at high
 	 * voltages.
 	 */
-	if (chg->smb_version == PM8150B_SUBTYPE && pval.intval)
+	if (chg->chg_param.smb_version == PM8150B_SUBTYPE && pval.intval)
 		return smblib_read_mid_voltage_chan(chg, val);
 	else
 		return smblib_read_usbin_voltage_chan(chg, val);
@@ -3625,7 +3627,7 @@ int smblib_get_prop_usb_current_now(struct smb_charger *chg,
 		 * For PMI632, scaling factor = reciprocal of
 		 * 0.4V/A in Buck mode, 0.8V/A in Boost mode.
 		 */
-		switch (chg->smb_version) {
+		switch (chg->chg_param.smb_version) {
 		case PMI632_SUBTYPE:
 			buck_scale = 40;
 			boost_scale = 80;
@@ -3911,7 +3913,7 @@ int smblib_get_prop_connector_health(struct smb_charger *chg)
 	 * In PM8150B, SKIN channel measures Wireless charger receiver
 	 * temp, used to regulate DC ICL.
 	 */
-	if (chg->smb_version == PM8150B_SUBTYPE && dc_present)
+	if (chg->chg_param.smb_version == PM8150B_SUBTYPE && dc_present)
 		return smblib_get_skin_temp_status(chg);
 
 	return POWER_SUPPLY_HEALTH_COOL;
@@ -4841,7 +4843,7 @@ irqreturn_t usbin_uv_irq_handler(int irq, void *data)
 
 unsuspend_input:
 		/* Force torch in boost mode to ensure it works with low ICL */
-		if (chg->smb_version == PMI632_SUBTYPE)
+		if (chg->chg_param.smb_version == PMI632_SUBTYPE)
 			schgm_flash_torch_priority(chg, TORCH_BOOST_MODE);
 
 		if (chg->aicl_max_reached) {
@@ -5126,7 +5128,7 @@ void smblib_usb_plugin_locked(struct smb_charger *chg)
 					chg->aicl_cont_threshold_mv);
 			chg->aicl_max_reached = false;
 
-			if (chg->smb_version == PMI632_SUBTYPE)
+			if (chg->chg_param.smb_version == PMI632_SUBTYPE)
 				schgm_flash_torch_priority(chg,
 						TORCH_BUCK_MODE);
 
@@ -6467,7 +6469,7 @@ static void smblib_moisture_protection_work(struct work_struct *work)
 	 * Disable 1% duty cycle on CC_ID pin and enable uUSB factory mode
 	 * detection to track any change on RID, as interrupts are disable.
 	 */
-	rc = smblib_write(chg, ((chg->smb_version == PMI632_SUBTYPE) ?
+	rc = smblib_write(chg, ((chg->chg_param.smb_version == PMI632_SUBTYPE) ?
 			PMI632_TYPEC_U_USB_WATER_PROTECTION_CFG_REG :
 			TYPEC_U_USB_WATER_PROTECTION_CFG_REG), 0);
 	if (rc < 0) {
@@ -7280,7 +7282,7 @@ int smblib_init(struct smb_charger *chg)
 
 	switch (chg->mode) {
 	case PARALLEL_MASTER:
-		rc = qcom_batt_init(chg->smb_version);
+		rc = qcom_batt_init(&chg->chg_param);
 		if (rc < 0) {
 			smblib_err(chg, "Couldn't init qcom_batt_init rc=%d\n",
 				rc);
@@ -7399,6 +7401,118 @@ int smblib_deinit(struct smb_charger *chg)
 	smblib_iio_deinit(chg);
 
 	return 0;
+}
+
+#define CP_TO_MAIN_ICL_OFFSET_PC		10
+int smblib_get_qc3_main_icl_offset(struct smb_charger *chg, int *offset_ua)
+{
+	union power_supply_propval pval = {0, };
+	int rc;
+
+	if ((chg->real_charger_type != POWER_SUPPLY_TYPE_USB_HVDCP_3)
+		|| chg->hvdcp3_standalone_config || !is_cp_available(chg)) {
+		*offset_ua = 0;
+		return 0;
+	}
+
+	rc = power_supply_get_property(chg->cp_psy, POWER_SUPPLY_PROP_CP_ILIM,
+					&pval);
+	if (rc < 0) {
+		smblib_err(chg, "Couldn't get CP ILIM rc=%d\n", rc);
+		return rc;
+	}
+
+	*offset_ua = (pval.intval * CP_TO_MAIN_ICL_OFFSET_PC * 2) / 100;
+
+	return 0;
+}
+
+#define IADP_OVERHEAT_UA	500000
+int smblib_set_prop_thermal_overheat(struct smb_charger *chg,
+						int therm_overheat)
+{
+	int icl_ua = 0;
+
+	if (chg->thermal_overheat == !!therm_overheat)
+		return 0;
+
+	/* Configure ICL to 500mA in case system health is Overheat */
+	if (therm_overheat)
+		icl_ua = IADP_OVERHEAT_UA;
+
+	if (!chg->cp_disable_votable)
+		chg->cp_disable_votable = find_votable("CP_DISABLE");
+
+	if (chg->cp_disable_votable) {
+		vote(chg->cp_disable_votable, OVERHEAT_LIMIT_VOTER,
+							therm_overheat, 0);
+		vote(chg->usb_icl_votable, OVERHEAT_LIMIT_VOTER,
+							therm_overheat, icl_ua);
+	}
+
+	chg->thermal_overheat = !!therm_overheat;
+	return 0;
+}
+
+static void dcin_icl_decrement(struct smb_charger *chg)
+{
+	int rc, icl;
+	ktime_t now = ktime_get();
+
+	rc = smblib_get_charge_param(chg, &chg->param.dc_icl, &icl);
+	if (rc < 0) {
+		smblib_err(chg, "reading DCIN ICL failed: %d\n", rc);
+		return;
+	}
+
+	if (icl == DCIN_ICL_MIN_UA) {
+		/* Cannot possibly decrease ICL any further - do nothing */
+		smblib_dbg(chg, PR_WLS, "hit min ICL: stop\n");
+		return;
+	}
+
+	/* Reduce ICL by 100 mA if 3 UVs happen in a row */
+	if (ktime_us_delta(now, chg->dcin_uv_last_time) > (200 * 1000)) {
+		chg->dcin_uv_count = 0;
+	} else if (chg->dcin_uv_count == 3) {
+		icl -= DCIN_ICL_STEP_UA;
+
+		smblib_dbg(chg, PR_WLS, "icl: %d mA\n", (icl / 1000));
+		rc = smblib_set_charge_param(chg, &chg->param.dc_icl, icl);
+		if (rc < 0) {
+			smblib_err(chg, "setting DCIN ICL failed: %d\n", rc);
+			return;
+		}
+
+		chg->dcin_uv_count = 0;
+	}
+
+	chg->dcin_uv_last_time = now;
+}
+
+irqreturn_t dcin_uv_irq_handler(int irq, void *data)
+{
+	struct smb_irq_data *irq_data = data;
+	struct smb_charger *chg = irq_data->parent_data;
+
+	mutex_lock(&chg->dcin_aicl_lock);
+
+	chg->dcin_uv_count++;
+	smblib_dbg(chg, (PR_WLS | PR_INTERRUPT), "DCIN UV count: %d\n",
+			chg->dcin_uv_count);
+	dcin_icl_decrement(chg);
+
+	mutex_unlock(&chg->dcin_aicl_lock);
+
+	return IRQ_HANDLED;
+}
+
+static bool is_cp_available(struct smb_charger *chg)
+{
+	if (!chg->cp_psy)
+		chg->cp_psy = power_supply_get_by_name("charge_pump_master");
+
+	return !!chg->cp_psy;
 }
 
 static int __init early_parse_off_charge_flag(char *p)
