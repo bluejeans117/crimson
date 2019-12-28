@@ -472,7 +472,7 @@
 	};
 
 	chosen {
-		bootargs = "rcupdate.rcu_expedited=1 rcu_nocbs=0-7";
+		bootargs = "rcupdate.rcu_normal_after_boot=1 rcu_nocbs=0-7 nowatchdog nosoftlockup=0 quiet audit=0 noirqdebug mce=ignore_ce";
 	};
 
 	soc: soc { };
@@ -491,7 +491,7 @@
 					dev = "/dev/block/platform/soc/1d84000.ufshc/by-name/vendor";
 					type = "ext4";
 					mnt_flags = "ro,barrier=1,discard";
-					fsmgr_flags = "wait";
+					fsmgr_flags = "wait,avb";
 					status = "ok";
 				};
 			};
@@ -597,13 +597,6 @@
 			compatible = "removed-dma-pool";
 			no-map;
 			reg = <0x0 0x9f800000 0x0 0x1e00000>;
-		};
-
-		ramoops_region: ramoops_region@0xa1600000 {
-			compatible = "ramoops";
-			reg = <0 0xa1600000 0 0x400000>;
-			console-size = <0x200000>;
-			pmsg-size = <0x200000>;
 		};
 
 		adsp_mem: adsp_region {
