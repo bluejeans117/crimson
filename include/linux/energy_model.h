@@ -9,6 +9,7 @@
 #include <linux/sched/topology.h>
 #include <linux/types.h>
 
+#ifdef CONFIG_ENERGY_MODEL
 /**
  * em_cap_state - Capacity state of a performance domain
  * @frequency:	The CPU frequency in KHz, for consistency with CPUFreq
@@ -41,7 +42,6 @@ struct em_perf_domain {
 	unsigned long cpus[0];
 };
 
-#ifdef CONFIG_ENERGY_MODEL
 #define EM_CPU_MAX_POWER 0xFFFF
 
 struct em_data_callback {
@@ -68,6 +68,12 @@ struct em_data_callback {
 struct em_perf_domain *em_cpu_get(int cpu);
 int em_register_perf_domain(cpumask_t *span, unsigned int nr_states,
 						struct em_data_callback *cb);
+
+static inline unsigned long map_util_freq(unsigned long util,
+                                       unsigned long freq, unsigned long cap)
+{
+	return (freq + (freq >> 2)) * util / cap;
+}
 
 /**
  * em_pd_energy() - Estimates the energy consumed by the CPUs of a perf. domain
@@ -160,6 +166,7 @@ static inline int em_pd_nr_cap_states(struct em_perf_domain *pd)
 }
 
 #else
+struct em_perf_domain {};
 struct em_data_callback {};
 #define EM_DATA_CB(_active_power_cb) { }
 

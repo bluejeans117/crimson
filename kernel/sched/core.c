@@ -209,9 +209,9 @@ static void update_rq_clock_task(struct rq *rq, s64 delta)
 
 	rq->clock_task += delta;
 
-#ifdef HAVE_SCHED_AVG_IRQ
+#if defined(CONFIG_IRQ_TIME_ACCOUNTING) || defined(CONFIG_PARAVIRT_TIME_ACCOUNTING)
 	if ((irq_delta + steal) && sched_feat(NONTASK_CAPACITY))
-		update_irq_load_avg(rq, irq_delta + steal);
+		sched_rt_avg_update(rq, irq_delta + steal);
 #endif
 }
 
@@ -4235,7 +4235,8 @@ recheck:
 			return -EINVAL;
 	}
 
-	if (attr->sched_flags & ~(SCHED_FLAG_ALL | SCHED_FLAG_SUGOV))
+	if (attr->sched_flags &
+		~(SCHED_FLAG_RESET_ON_FORK | SCHED_FLAG_RECLAIM))
 		return -EINVAL;
 
 	/*
@@ -4302,9 +4303,6 @@ recheck:
 	}
 
 	if (user) {
-		if (attr->sched_flags & SCHED_FLAG_SUGOV)
-			return -EINVAL;
-
 		retval = security_task_setscheduler(p);
 		if (retval)
 			return retval;
@@ -4360,8 +4358,7 @@ change:
 		}
 #endif
 #ifdef CONFIG_SMP
-		if (dl_bandwidth_enabled() && dl_policy(policy) &&
-				!(attr->sched_flags & SCHED_FLAG_SUGOV)) {
+		if (dl_bandwidth_enabled() && dl_policy(policy)) {
 			cpumask_t *span = rq->rd->span;
 
 			/*
@@ -4490,11 +4487,6 @@ int sched_setattr(struct task_struct *p, const struct sched_attr *attr)
 	return __sched_setscheduler(p, attr, true, true);
 }
 EXPORT_SYMBOL_GPL(sched_setattr);
-
-int sched_setattr_nocheck(struct task_struct *p, const struct sched_attr *attr)
-{
-	return __sched_setscheduler(p, attr, false, true);
-}
 
 /**
  * sched_setscheduler_nocheck - change the scheduling policy and/or RT priority of a thread from kernelspace.
@@ -4658,8 +4650,6 @@ SYSCALL_DEFINE3(sched_setattr, pid_t, pid, struct sched_attr __user *, uattr,
 
 	if ((int)attr.sched_policy < 0)
 		return -EINVAL;
-	if (attr.sched_flags & SCHED_FLAG_KEEP_POLICY)
-		attr.sched_policy = SETPARAM_POLICY;
 
 	rcu_read_lock();
 	retval = -ESRCH;

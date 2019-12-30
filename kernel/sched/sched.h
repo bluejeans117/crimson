@@ -29,7 +29,6 @@
 #include <linux/mutex.h>
 #include <linux/psi.h>
 #include <linux/spinlock.h>
-#include <linux/energy_model.h>
 #include <linux/stop_machine.h>
 #include <linux/irq_work.h>
 #include <linux/tick.h>
@@ -230,36 +229,12 @@ static inline int task_has_dl_policy(struct task_struct *p)
 }
 
 /*
- * !! For sched_setattr_nocheck() (kernel) only !!
- *
- * This is actually gross. :(
- *
- * It is used to make schedutil kworker(s) higher priority than SCHED_DEADLINE
- * tasks, but still be able to sleep. We need this on platforms that cannot
- * atomically change clock frequency. Remove once fast switching will be
- * available on such platforms.
- *
- * SUGOV stands for SchedUtil GOVernor.
- */
-#define SCHED_FLAG_SUGOV	0x10000000
-
-static inline bool dl_entity_is_special(struct sched_dl_entity *dl_se)
-{
-#ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
-	return unlikely(dl_se->flags & SCHED_FLAG_SUGOV);
-#else
-	return false;
-#endif
-}
-
-/*
  * Tells if entity @a should preempt entity @b.
  */
 static inline bool
 dl_entity_preempt(struct sched_dl_entity *a, struct sched_dl_entity *b)
 {
-	return dl_entity_is_special(a) ||
-	       dl_time_before(a->deadline, b->deadline);
+	return dl_time_before(a->deadline, b->deadline);
 }
 
 /*
@@ -649,11 +624,6 @@ struct rt_rq {
 #endif
 };
 
-static inline bool rt_rq_is_runnable(struct rt_rq *rt_rq)
-{
-	return rt_rq->rt_queued && rt_rq->rt_nr_running;
-}
-
 /* Deadline class' related fields in a runqueue */
 struct dl_rq {
 	/* runqueue is an rbtree, ordered by deadline */
@@ -725,7 +695,7 @@ struct max_cpu_capacity {
 };
 
 struct perf_domain {
-	struct em_perf_domain *em_pd;
+	struct em_perf_domain *obj;
 	struct perf_domain *next;
 	struct rcu_head rcu;
 };
@@ -905,12 +875,6 @@ struct rq {
 
 	u64 rt_avg;
 	u64 age_stamp;
-	struct sched_avg avg_rt;
-	struct sched_avg avg_dl;
-#if defined(CONFIG_IRQ_TIME_ACCOUNTING) || defined(CONFIG_PARAVIRT_TIME_ACCOUNTING)
-#define HAVE_SCHED_AVG_IRQ
-	struct sched_avg	avg_irq;
-#endif
 	u64 idle_stamp;
 	u64 avg_idle;
 
@@ -2217,33 +2181,9 @@ static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta)
 	rq->rt_avg += rt_delta * arch_scale_freq_capacity(NULL, cpu_of(rq));
 	sched_avg_update(rq);
 }
-int update_dl_rq_load_avg(u64 now, struct rq *rq, int running);
-
-#if defined(CONFIG_IRQ_TIME_ACCOUNTING) || defined(CONFIG_PARAVIRT_TIME_ACCOUNTING)
-int update_irq_load_avg(struct rq *rq, u64 running);
-#else
-static inline int
-update_irq_load_avg(struct rq *rq, u64 running)
-{
-	return 0;
-}
-#endif
-
 #else
 static inline void sched_rt_avg_update(struct rq *rq, u64 rt_delta) { }
 static inline void sched_avg_update(struct rq *rq) { }
-
-static inline int
-update_dl_rq_load_avg(u64 now, struct rq *rq, int running)
-{
-	return 0;
-}
-
-static inline int
-update_irq_load_avg(struct rq *rq, u64 running)
-{
-	return 0;
-}
 #endif
 
 #ifdef CONFIG_SMP
@@ -3172,93 +3112,10 @@ struct sched_avg_stats {
 	int nr_max;
 };
 extern void sched_get_nr_running_avg(struct sched_avg_stats *stats);
-
 #ifdef CONFIG_SMP
 #ifdef CONFIG_ENERGY_MODEL
-#define perf_domain_span(pd) (to_cpumask(((pd)->em_pd->cpus)))
+#define perf_domain_span(pd) (to_cpumask(((pd)->obj->cpus)))
 #else
 #define perf_domain_span(pd) NULL
 #endif
-#endif
-
-#ifdef CONFIG_CPU_FREQ_GOV_SCHEDUTIL
-/**
- * enum schedutil_type - CPU utilization type
- * @FREQUENCY_UTIL:	Utilization used to select frequency
- * @ENERGY_UTIL:	Utilization used during energy calculation
- *
- * The utilization signals of all scheduling classes (CFS/RT/DL) and IRQ time
- * need to be aggregated differently depending on the usage made of them. This
- * enum is used within schedutil_freq_util() to differentiate the types of
- * utilization expected by the callers, and adjust the aggregation accordingly.
- */
-enum schedutil_type {
-	FREQUENCY_UTIL,
-	ENERGY_UTIL,
-};
-
-unsigned long schedutil_freq_util(int cpu, unsigned long util_cfs,
-				  unsigned long max, enum schedutil_type type);
-
-static inline unsigned long schedutil_energy_util(int cpu, unsigned long cfs)
-{
-	unsigned long max = arch_scale_cpu_capacity(NULL, cpu);
-
-	return schedutil_freq_util(cpu, cfs, max, ENERGY_UTIL);
-}
-
-static inline unsigned long cpu_bw_dl(struct rq *rq)
-{
-	return (rq->dl.running_bw * SCHED_CAPACITY_SCALE) >> BW_SHIFT;
-}
-
-static inline unsigned long cpu_util_dl(struct rq *rq)
-{
-	return READ_ONCE(rq->avg_dl.util_avg);
-}
-
-static inline unsigned long cpu_util_cfs(struct rq *rq)
-{
-	return rq->cfs.avg.util_avg;
-}
-
-#else /* CONFIG_CPU_FREQ_GOV_SCHEDUTIL */
-static inline unsigned long schedutil_energy_util(int cpu, unsigned long cfs)
-{
-	return cfs;
-}
-#endif
-
-#ifdef HAVE_SCHED_AVG_IRQ
-static inline unsigned long cpu_util_irq(struct rq *rq)
-{
-	return rq->avg_irq.util_avg;
-}
-
-static inline
-unsigned long scale_irq_capacity(unsigned long util, unsigned long irq, unsigned long max)
-{
-	util *= (max - irq);
-	util /= max;
-
-	return util;
-
-}
-#else
-static inline unsigned long cpu_util_irq(struct rq *rq)
-{
-	return 0;
-}
-
-static inline
-unsigned long scale_irq_capacity(unsigned long util, unsigned long irq, unsigned long max)
-{
-	return util;
-}
-#endif
-
-#if defined(CONFIG_ENERGY_MODEL) && defined(CONFIG_CPU_FREQ_GOV_SCHEDUTIL)
-#define perf_domain_span(pd) (to_cpumask(((pd)->em_pd->cpus)))
-#else
-#define perf_domain_span(pd) NULL
 #endif

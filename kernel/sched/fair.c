@@ -467,10 +467,9 @@ static inline void list_del_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 	}
 }
 
-/* Iterate thr' all leaf cfs_rq's on a runqueue */
-#define for_each_leaf_cfs_rq_safe(rq, cfs_rq, pos)			\
-	list_for_each_entry_safe(cfs_rq, pos, &rq->leaf_cfs_rq_list,	\
-				 leaf_cfs_rq_list)
+/* Iterate through all leaf cfs_rq's on a runqueue: */
+#define for_each_leaf_cfs_rq(rq, cfs_rq) \
+	list_for_each_entry_rcu(cfs_rq, &rq->leaf_cfs_rq_list, leaf_cfs_rq_list)
 
 /* Do the two (enqueued) entities belong to the same group ? */
 static inline struct cfs_rq *
@@ -563,8 +562,8 @@ static inline void list_del_leaf_cfs_rq(struct cfs_rq *cfs_rq)
 {
 }
 
-#define for_each_leaf_cfs_rq_safe(rq, cfs_rq, pos)	\
-		for (cfs_rq = &rq->cfs, pos = NULL; cfs_rq; cfs_rq = pos)
+#define for_each_leaf_cfs_rq(rq, cfs_rq)	\
+		for (cfs_rq = &rq->cfs; cfs_rq; cfs_rq = NULL)
 
 static inline struct sched_entity *parent_entity(struct sched_entity *se)
 {
@@ -3152,7 +3151,7 @@ ___update_load_avg(u64 now, int cpu, struct sched_avg *sa,
 		cfs_rq->runnable_load_avg =
 			div_u64(cfs_rq->runnable_load_sum, LOAD_AVG_MAX - 1024 + sa->period_contrib);
 	}
-	WRITE_ONCE(sa->util_avg, sa->util_sum / (LOAD_AVG_MAX - 1024 + sa->period_contrib));
+	sa->util_avg = sa->util_sum / (LOAD_AVG_MAX - 1024 + sa->period_contrib);
 
 	if (cfs_rq)
 		trace_sched_load_cfs_rq(cfs_rq);
@@ -3587,38 +3586,6 @@ int update_rt_rq_load_avg(u64 now, int cpu, struct rt_rq *rt_rq, int running)
 
 	return ret;
 }
-
-int update_dl_rq_load_avg(u64 now, struct rq *rq, int running)
-{
-	int ret;
-
-	ret = ___update_load_avg(now, rq->cpu, &rq->avg_dl, running, running, NULL, &rq->rt);
-
-	return ret;
-}
-
-#if defined(CONFIG_IRQ_TIME_ACCOUNTING) || defined(CONFIG_PARAVIRT_TIME_ACCOUNTING)
-int update_irq_load_avg(struct rq *rq, u64 running)
-{
-	int ret = 0;
-	struct rt_rq *rt_rq = &rq->rt;
-	/*
-	 * We know the time that has been used by interrupt since last update
-	 * but we don't when. Let be pessimistic and assume that interrupt has
-	 * happened just before the update. This is not so far from reality
-	 * because interrupt will most probably wake up task and trig an update
-	 * of rq clock during which the metric si updated.
-	 * We start to decay with normal context time and then we add the
-	 * interrupt context time.
-	 * We can safely remove running from rq->clock because
-	 * rq->clock += delta with delta >= running
-	 */
-	ret = ___update_load_avg(rq->clock - running, rq->cpu, &rq->avg_irq, 0, 0, NULL, rt_rq);
-	ret += ___update_load_avg(rq->clock, rq->cpu, &rq->avg_irq, 1, 1, NULL, rt_rq);
-
-	return ret;
-}
-#endif
 
 /*
  * Optional action to be done while updating the load average
@@ -8571,7 +8538,7 @@ static long compute_energy_simplified(struct task_struct *p, int dst_cpu,
 			sum_util += util;
 		}
 
-		energy += em_pd_energy(pd->em_pd, max_util, sum_util);
+		energy += em_pd_energy(pd->obj, max_util, sum_util);
 		pd = pd->next;
 	}
 
@@ -9738,45 +9705,12 @@ static void attach_tasks(struct lb_env *env)
 	rq_unlock(env->dst_rq, &rf);
 }
 
-static inline bool others_have_blocked(struct rq *rq)
-{
-	if (READ_ONCE(rq->avg_rt.util_avg))
-		return true;
-
-	if (READ_ONCE(rq->avg_dl.util_avg))
-		return true;
-
-#if defined(CONFIG_IRQ_TIME_ACCOUNTING) || defined(CONFIG_PARAVIRT_TIME_ACCOUNTING)
-	if (READ_ONCE(rq->avg_irq.util_avg))
-		return true;
-#endif
-
-	return false;
-}
-
 #ifdef CONFIG_FAIR_GROUP_SCHED
-
-static inline bool cfs_rq_is_decayed(struct cfs_rq *cfs_rq)
-{
-	if (cfs_rq->load.weight)
-		return false;
-
-	if (cfs_rq->avg.load_sum)
-		return false;
-
-	if (cfs_rq->avg.util_sum)
-		return false;
-
-	if (cfs_rq->runnable_load_sum)
-		return false;
-
-	return true;
-}
 
 static void update_blocked_averages(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
-	struct cfs_rq *cfs_rq, *pos;
+	struct cfs_rq *cfs_rq;
 	struct rq_flags rf;
 
 	rq_lock_irqsave(rq, &rf);
@@ -9786,7 +9720,7 @@ static void update_blocked_averages(int cpu)
 	 * Iterates the task_group tree in a bottom up fashion, see
 	 * list_add_leaf_cfs_rq() for details.
 	 */
-	for_each_leaf_cfs_rq_safe(rq, cfs_rq, pos) {
+	for_each_leaf_cfs_rq(rq, cfs_rq) {
 		struct sched_entity *se;
 
 		/* throttled entities do not contribute to load */
@@ -9800,17 +9734,8 @@ static void update_blocked_averages(int cpu)
 		se = cfs_rq->tg->se[cpu];
 		if (se && !skip_blocked_update(se))
 			update_load_avg(se, 0);
-
-		/*
-		 * There can be a lot of idle CPU cgroups.  Don't let fully
-		 * decayed cfs_rqs linger on the list.
-		 */
-		if (cfs_rq_is_decayed(cfs_rq))
-			list_del_leaf_cfs_rq(cfs_rq);
 	}
 	update_rt_rq_load_avg(rq_clock_task(rq), cpu, &rq->rt, 0);
-	update_dl_rq_load_avg(rq_clock_task(rq), rq, 0);
-	update_irq_load_avg(rq, 0);
 #ifdef CONFIG_NO_HZ_COMMON
 	rq->last_blocked_load_update_tick = jiffies;
 #endif
@@ -9874,8 +9799,6 @@ static inline void update_blocked_averages(int cpu)
 	update_rq_clock(rq);
 	update_cfs_rq_load_avg(cfs_rq_clock_task(cfs_rq), cfs_rq, true);
 	update_rt_rq_load_avg(rq_clock_task(rq), cpu, &rq->rt, 0);
-	update_dl_rq_load_avg(rq_clock_task(rq), rq, 0);
-	update_irq_load_avg(rq, 0);
 #ifdef CONFIG_NO_HZ_COMMON
 	rq->last_blocked_load_update_tick = jiffies;
 #endif
@@ -9984,24 +9907,28 @@ static inline int get_sd_load_idx(struct sched_domain *sd,
 static unsigned long scale_rt_capacity(int cpu)
 {
 	struct rq *rq = cpu_rq(cpu);
-	unsigned long max = arch_scale_cpu_capacity(NULL, cpu);
-	unsigned long used, free;
-	unsigned long irq;
+	u64 total, used, age_stamp, avg;
+	s64 delta;
 
-	irq = cpu_util_irq(rq);
+	/*
+	 * Since we're reading these variables without serialization make sure
+	 * we read them once before doing sanity checks on them.
+	 */
+	age_stamp = READ_ONCE(rq->age_stamp);
+	avg = READ_ONCE(rq->rt_avg);
+	delta = __rq_clock_broken(rq) - age_stamp;
 
-	if (unlikely(irq >= max))
-		return 1;
+	if (unlikely(delta < 0))
+		delta = 0;
 
-	used = READ_ONCE(rq->avg_rt.util_avg);
-	used += READ_ONCE(rq->avg_dl.util_avg);
+	total = sched_avg_period() + delta;
 
-	if (unlikely(used >= max))
-		return 1;
+	used = div_u64(avg, total);
 
-	free = max - used;
+	if (likely(used < SCHED_CAPACITY_SCALE))
+		return SCHED_CAPACITY_SCALE - used;
 
-	return scale_irq_capacity(free, irq, max);
+	return 1;
 }
 
 void init_max_cpu_capacity(struct max_cpu_capacity *mcc)
@@ -10013,10 +9940,14 @@ void init_max_cpu_capacity(struct max_cpu_capacity *mcc)
 
 static void update_cpu_capacity(struct sched_domain *sd, int cpu)
 {
-	unsigned long capacity = scale_rt_capacity(cpu);
+	unsigned long capacity = arch_scale_cpu_capacity(sd, cpu);
 	struct sched_group *sdg = sd->groups;
 
-	cpu_rq(cpu)->cpu_capacity_orig = arch_scale_cpu_capacity(sd, cpu);
+	capacity *= arch_scale_max_freq_capacity(sd, cpu);
+	capacity >>= SCHED_CAPACITY_SHIFT;
+
+	capacity = min(capacity, thermal_cap(cpu));
+	cpu_rq(cpu)->cpu_capacity_orig = capacity;
 
 	capacity *= scale_rt_capacity(cpu);
 	capacity >>= SCHED_CAPACITY_SHIFT;
@@ -13006,10 +12937,10 @@ const struct sched_class fair_sched_class = {
 #ifdef CONFIG_SCHED_DEBUG
 void print_cfs_stats(struct seq_file *m, int cpu)
 {
-	struct cfs_rq *cfs_rq, *pos;
+	struct cfs_rq *cfs_rq;
 
 	rcu_read_lock();
-	for_each_leaf_cfs_rq_safe(cpu_rq(cpu), cfs_rq, pos)
+	for_each_leaf_cfs_rq(cpu_rq(cpu), cfs_rq)
 		print_cfs_rq(m, cpu, cfs_rq);
 	rcu_read_unlock();
 }
