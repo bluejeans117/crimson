@@ -22,6 +22,7 @@
 #include <linux/slab.h>
 #include <linux/input.h>
 #include <linux/time.h>
+#include <linux/devfreq_boost.h>
 
 struct cpu_sync {
 	int cpu;
@@ -217,6 +218,7 @@ static void do_input_boost(struct work_struct *work)
 			sched_boost_active = true;
 	}
 
+	devfreq_boost_kick(DEVFREQ_MSM_CPUBW);
 	queue_delayed_work(cpu_boost_wq, &input_boost_rem,
 					msecs_to_jiffies(input_boost_ms));
 }
