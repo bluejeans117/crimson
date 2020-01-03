@@ -332,6 +332,7 @@ static int __init cpu_input_boost_init(void)
 	}
 
 	cpu_input_boost_input_handler.private = b;
+#if 0
 	ret = input_register_handler(&cpu_input_boost_input_handler);
 	if (ret) {
 		pr_err("Failed to register input handler, err: %d\n", ret);
@@ -345,7 +346,7 @@ static int __init cpu_input_boost_init(void)
 		pr_err("Failed to register msm_drm notifier, err: %d\n", ret);
 		goto unregister_handler;
 	}
-
+#endif
 	thread = kthread_run(cpu_boost_thread, b, "cpu_boostd");
 	if (IS_ERR(thread)) {
 		ret = PTR_ERR(thread);
