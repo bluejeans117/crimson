@@ -31,8 +31,13 @@
 #include <drm/drm_mode.h>
 #include <drm/drm_print.h>
 #include <linux/sync_file.h>
+#include <linux/jiffies.h>
+#include <linux/cpu_input_boost.h>
+#include <linux/devfreq_boost.h>
 
 #include "drm_crtc_internal.h"
+
+static unsigned long prev_commit = 0ul, diff;
 
 void __drm_crtc_commit_free(struct kref *kref)
 {
@@ -2246,6 +2251,26 @@ int drm_mode_atomic_ioctl(struct drm_device *dev,
 	if ((arg->flags & DRM_MODE_ATOMIC_TEST_ONLY) &&
 			(arg->flags & DRM_MODE_PAGE_FLIP_EVENT))
 		return -EINVAL;
+
+	if (!(arg->flags & DRM_MODE_ATOMIC_TEST_ONLY)) {
+		if(prev_commit != 0ul) {
+			/*
+			 * The value of CONFIG_HZ on this kernel is 300.
+			 * This means that every second, 300 ticks will
+			 * be added to the value of jiffies. If we want to
+			 * maintain 60fps, each frame must be pushed within
+			 * 16ms. In case delay crosses 16ms (or 48 jiffies),
+			 * boost CPU and DDR bus in an attempt to stabilise
+			 * framerates.
+			*/
+			diff = jiffies - prev_commit;
+			if(diff > 48ul) {
+				cpu_input_boost_kick();
+				devfreq_boost_kick(DEVFREQ_MSM_CPUBW);
+			}
+			prev_commit = jiffies;
+		} else prev_commit = jiffies;
+	}
 
 	drm_modeset_acquire_init(&ctx, 0);
 
