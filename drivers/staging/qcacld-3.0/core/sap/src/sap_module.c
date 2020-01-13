@@ -1308,7 +1308,6 @@ wlansap_update_csa_channel_params(struct sap_context *sap_context,
 	return QDF_STATUS_SUCCESS;
 }
 
-#ifdef WLAN_DEBUG
 /**
  * sap_get_csa_reason_str() - Get csa reason in string
  * @reason: sap reason enum value
