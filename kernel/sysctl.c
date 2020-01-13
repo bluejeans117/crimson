@@ -3396,14 +3396,6 @@ int sched_boost_handler(struct ctl_table *table, int write,
 	if (ret || !write)
 		return ret;
 
-#if 0
-	if (verify_boost_params(*data))
-		_sched_set_boost(*data);
-	else
-		return -EINVAL;
-#endif
-
-	pr_info("%s set sb to %i\n", current->comm, *data);
 	return ret;
 }
 
