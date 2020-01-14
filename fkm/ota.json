@@ -1,0 +1,13 @@
+{
+  "kernel": {
+    "name": "Crimson Minimal",
+    "version": "-adrenonls",
+    "link": "http://uditkarode.xyz/crimson/CrimsonKernel-20200113-adrenonls.zip",
+    "changelog_url": "http://uditkarode.xyz/crimson/changelog",
+    "date": "2020-01-13",
+    "sha1": "8d7297a27f287fa66aeae4fda418a5db833f65bc"
+  },
+  "support": {
+    "link": "https://t.me/crimsonviolet"
+  }
+}
