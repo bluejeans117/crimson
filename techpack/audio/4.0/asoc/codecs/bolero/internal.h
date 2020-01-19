@@ -15,6 +15,7 @@ enum {
 	BOLERO_WCD_EVT_PA_OFF_PRE_SSR,
 	BOLERO_WCD_EVT_SSR_DOWN,
 	BOLERO_WCD_EVT_SSR_UP,
+	BOLERO_WCD_EVT_PA_ON_POST_FSCLK,
 };
 
 enum {
@@ -30,6 +31,7 @@ enum {
 	WCD_BOLERO_EVT_IMPED_TRUE,   /* for imped true */
 	WCD_BOLERO_EVT_IMPED_FALSE,  /* for imped false */
 	WCD_BOLERO_EVT_RX_COMPANDER_SOFT_RST,
+	WCD_BOLERO_EVT_BCS_CLK_OFF,
 };
 
 struct wcd_ctrl_platform_data {
@@ -46,6 +48,7 @@ struct bolero_priv {
 	struct regmap *regmap;
 	struct mutex io_lock;
 	struct mutex clk_lock;
+	struct mutex vote_lock;
 	bool va_without_decimation;
 	bool macros_supported[MAX_MACRO];
 	bool dev_up;
@@ -60,6 +63,8 @@ struct bolero_priv {
 	u32 version;
 	struct clk *lpass_core_hw_vote;
 	struct clk *lpass_audio_hw_vote;
+	int core_hw_vote_count;
+	int core_audio_vote_count;
 
 	/* Entry for version info */
 	struct snd_info_entry *entry;
@@ -86,6 +91,9 @@ int bolero_get_macro_id(bool va_no_dec_flag, u16 reg);
 extern const struct regmap_config bolero_regmap_config;
 extern u8 *bolero_reg_access[MAX_MACRO];
 extern u8 bolero_va_top_reg_access[BOLERO_CDC_VA_MACRO_TOP_MAX];
+extern u8 bolero_va_reg_access_v2[BOLERO_CDC_VA_MACRO_MAX];
+extern u8 bolero_va_reg_access_v3[BOLERO_CDC_VA_MACRO_MAX];
+extern u8 bolero_tx_reg_access_v2[BOLERO_CDC_TX_MACRO_MAX];
 extern const u16 macro_id_base_offset[MAX_MACRO];
 
 #endif
