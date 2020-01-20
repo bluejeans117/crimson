@@ -1262,7 +1262,7 @@ static int32_t nvt_ts_probe(struct i2c_client *client, const struct i2c_device_i
 		ret = -ENOMEM;
 		goto err_create_nvt_wq_failed;
 	}
-	sched_setscheduler(nvt_worker_thread, SCHED_FIFO, &param);
+	sched_setscheduler(nvt_worker_thread, SCHED_RR, &param);
 	
 	kthread_init_work(&ts->nvt_work, &nvt_ts_work_func);
 
