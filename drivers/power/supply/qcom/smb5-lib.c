@@ -884,39 +884,6 @@ int smblib_set_aicl_cont_threshold(struct smb_chg_param *param,
  * HELPER FUNCTIONS *
  ********************/
 
-static bool is_cp_available(struct smb_charger *chg)
-{
-	if (!chg->cp_psy)
-		chg->cp_psy = power_supply_get_by_name("charge_pump_master");
-
-	return !!chg->cp_psy;
-}
-
-#define CP_TO_MAIN_ICL_OFFSET_PC		10
-int smblib_get_qc3_main_icl_offset(struct smb_charger *chg, int *offset_ua)
-{
-	union power_supply_propval pval = {0, };
-	int rc;
-
-	if (((chg->real_charger_type != POWER_SUPPLY_TYPE_USB_HVDCP_3)
-		&& (chg->real_charger_type != POWER_SUPPLY_TYPE_USB_HVDCP_3P5))
-		|| chg->hvdcp3_standalone_config || !is_cp_available(chg)) {
-		*offset_ua = 0;
-		return 0;
-	}
-
-	rc = power_supply_get_property(chg->cp_psy, POWER_SUPPLY_PROP_CP_ILIM,
-					&pval);
-	if (rc < 0) {
-		smblib_err(chg, "Couldn't get CP ILIM rc=%d\n", rc);
-		return rc;
-	}
-
-	*offset_ua = (pval.intval * CP_TO_MAIN_ICL_OFFSET_PC * 2) / 100;
-
-	return 0;
-}
-
 int smblib_get_prop_from_bms(struct smb_charger *chg,
 				enum power_supply_property psp,
 				union power_supply_propval *val)
@@ -7320,8 +7287,6 @@ int smblib_init(struct smb_charger *chg)
 					smblib_dual_role_check_work);
 	INIT_DELAYED_WORK(&chg->pr_swap_detach_work,
 					smblib_pr_swap_detach_work);
-	INIT_DELAYED_WORK(&chg->pr_lock_clear_work,
-					smblib_pr_lock_clear_work);
 	setup_timer(&chg->apsd_timer, apsd_timer_cb, (unsigned long)chg);
 
 	if (chg->wa_flags & CHG_TERMINATION_WA) {
