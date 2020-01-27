@@ -296,7 +296,7 @@ int update_devfreq(struct devfreq *devfreq)
 		cur_freq = devfreq->previous_freq;
 
 	freqs.old = cur_freq;
-	freqs.new = freq;
+	freqs.new = devfreq->min_freq;
 	devfreq_notify_transition(devfreq, &freqs, DEVFREQ_PRECHANGE);
 
 	err = devfreq->profile->target(devfreq->dev.parent, &freq, flags);
