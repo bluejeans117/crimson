@@ -1,11 +1,11 @@
 {
   "kernel": {
     "name": "Crimson Minimal",
-    "version": "-adrenonls",
-    "link": "http://uditkarode.xyz/crimson/CrimsonKernel-20200113-adrenonls.zip",
+    "version": "-cib",
+    "link": "http://uditkarode.xyz/crimson/CrimsonKernel-20200127-cib.zip",
     "changelog_url": "http://uditkarode.xyz/crimson/changelog",
-    "date": "2020-01-13",
-    "sha1": "8d7297a27f287fa66aeae4fda418a5db833f65bc"
+    "date": "2020-01-27",
+    "sha1": "972cbaeb5f283849a65801ef0fd9b934fd9d2ead"
   },
   "support": {
     "link": "https://t.me/crimsonviolet"
